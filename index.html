@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>贪吃蛇游戏</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <h1>贪吃蛇游戏</h1>
+        <div class="game-info">
+            <div class="score">得分: <span id="score">0</span></div>
+            <div class="speed">速度: <span id="speed">300</span>ms</div>
+            <div class="boundary-status">边界: <span id="boundaryStatus">开启</span></div>
+            <div class="game-over" id="gameOver" style="display: none;">
+                <p>游戏结束！</p>
+                <button onclick="restartGame()">重新开始</button>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+        <div class="controls">
+            <p>使用方向键控制蛇的移动</p>
+            <p>按P键暂停/继续游戏</p>
+            <p>按C键切换边界开关</p>
+        </div>
+        
+        <!-- 移动端虚拟按键 -->
+        <div class="mobile-controls" id="mobileControls">
+            <div class="dpad-container">
+                <div class="dpad-row">
+                    <button class="dpad-btn dpad-up" ontouchstart="handleMobileControl('up')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">▲</button>
+                </div>
+                <div class="dpad-row">
+                    <button class="dpad-btn dpad-left" ontouchstart="handleMobileControl('left')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">◀</button>
+                    <button class="dpad-btn dpad-center" ontouchstart="handleMobileControl('pause')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">⏸</button>
+                    <button class="dpad-btn dpad-right" ontouchstart="handleMobileControl('right')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">▶</button>
+                </div>
+                <div class="dpad-row">
+                    <button class="dpad-btn dpad-down" ontouchstart="handleMobileControl('down')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">▼</button>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <button class="action-btn boundary-btn" ontouchstart="handleMobileControl('boundary')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">边界</button>
+                <button class="action-btn restart-btn" ontouchstart="handleMobileControl('restart')" ontouchend="stopMobileControl()" ontouchcancel="stopMobileControl()">重启</button>
+            </div>
+        </div>
+        <div class="pause-menu" id="pauseMenu" style="display: none;">
+            <div class="pause-content">
+                <h2>游戏暂停</h2>
+                <div class="button-container">
+                    <button onclick="togglePause()">继续游戏</button>
+                    <button onclick="restartFromPause()">重新开始</button>
+                    <button onclick="showInstructions()">玩法介绍</button>
+                </div>
+            </div>
+        </div>
+        <div class="instructions-menu" id="instructionsMenu" style="display: none;">
+            <div class="instructions-content">
+                <h2>玩法介绍</h2>
+                <div class="instructions-text">
+                    <h3>🎮 基本操作</h3>
+                    <p>• 使用方向键（↑↓←→）控制蛇的移动</p>
+                    <p>• 按 P 键暂停/继续游戏</p>
+                    <p>• 按 C 键切换边界开关</p>
+                    
+                    <h3>🎯 游戏目标</h3>
+                    <p>• 控制蛇吃到食物（红色方块）</p>
+                    <p>• 每吃一个食物得1分</p>
+                    <p>• 蛇身会随着吃食物而变长</p>
+                    
+                    <h3>⚡ 加速系统</h3>
+                    <p>• 初始速度：300ms</p>
+                    <p>• 每获得3分，速度增加30ms</p>
+                    <p>• 最高速度：120ms</p>
+                    
+                    <h3>🌐 边界开关</h3>
+                    <p>• 边界开启：撞到墙壁游戏结束</p>
+                    <p>• 边界关闭：可从对面边界穿越出现</p>
+                    <p>• 按 C 键随时切换边界状态</p>
+                    
+                    <h3>⚠️ 游戏规则</h3>
+                    <p>• 不能撞到自己的身���</p>
+                    <p>• 不能进行180°转弯（如正在向右不能立即向左）</p>
+                </div>
+                <button onclick="hideInstructions()">返回</button>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
