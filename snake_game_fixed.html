@@ -337,9 +337,11 @@
         <h1>贪吃蛇游戏</h1>
         <div class="game-info">
             <div class="score">得分: <span id="score">0</span></div>
+            <div class="high-score">最高分: <span id="highScore">0</span></div>
             <div class="speed">速度: <span id="speed">300</span>ms</div>
             <div class="boundary-status">边界: <span id="boundaryStatus">开启</span></div>
             <div class="ai-status">AI: <span id="aiStatus">关闭</span></div>
+            <div class="heaven-mode">天堂制造: <span id="heavenModeStatus">关闭</span></div>
         </div>
         <div class="game-over" id="gameOver" style="display: none;">
             <p>游戏结束！</p>
@@ -389,7 +391,8 @@
                     
                     <h3>🎯 游戏目标</h3>
                     <p>• 控制蛇吃到食物（红色方块）</p>
-                    <p>• 每吃一个食物得1分</p>
+                    <p>• 每吃一个食物得10分</p>
+                    <p>• 金苹果：分数≥100后出现，每5个食物的第5个，+20分</p>
                     <p>• 蛇身会随着吃食物而变长</p>
                     
                     <h3>⚡ 加速系统</h3>
@@ -428,11 +431,18 @@
         let gameLoop;
         let aiLoop;
         let score = 0;
+        let highScore = 0; // 新增：最高分
         let currentSpeed = 300;
         let boundaryEnabled = true;
         let aiMode = false;
         let aiInterval;
         let aiIntervalTime = 100;
+        let heavenMode = false; // 天堂制造模式状态
+        let previousSpeed = 300; // 天堂模式前的速度
+        let foodCount = 0; // 食物计数器，用于金苹果生成
+        let goldenAppleActive = false; // 当前是否为金苹果
+        let obstacles = []; // 障碍物数组
+        let obstacleTimer; // 障碍物重新生成定时器
 
         // 游戏配置
         const GRID_SIZE = 35;
@@ -450,9 +460,11 @@
             return {
                 canvas: document.getElementById('gameCanvas'),
                 scoreElement: document.getElementById('score'),
+                highScoreElement: document.getElementById('highScore'), // 新增
                 speedElement: document.getElementById('speed'),
                 boundaryElement: document.getElementById('boundaryStatus'),
                 aiElement: document.getElementById('aiStatus'),
+                heavenModeElement: document.getElementById('heavenModeStatus'), // 新增
                 gameOverElement: document.getElementById('gameOver'),
                 pauseMenuElement: document.getElementById('pauseMenu'),
                 instructionsMenuElement: document.getElementById('instructionsMenu')
@@ -474,13 +486,35 @@
             // 生成食物
             generateFood();
             
+            // 生成初始障碍物
+            generateObstacles();
+            
+            // 启动障碍物定时器（每10秒重新生成）
+            if (obstacleTimer) {
+                clearInterval(obstacleTimer);
+            }
+            obstacleTimer = setInterval(() => {
+                if (gameRunning && !gamePaused) {
+                    generateObstacles();
+                    console.log('障碍物重新生成');
+                }
+            }, 10000); // 10秒
+            
             // 重置游戏状态
             score = 0;
+            foodCount = 0; // 重置食物计数器
+            goldenAppleActive = false; // 重置金苹果状态
             currentSpeed = INITIAL_SPEED;
             direction = 'right';
             nextDirection = 'right';
             gameRunning = true;
             gamePaused = false;
+            
+            // 加载最高分
+            const savedHighScore = localStorage.getItem('snakeHighScore');
+            if (savedHighScore) {
+                highScore = parseInt(savedHighScore, 10);
+            }
             
             // 更新显示
             updateDisplay();
@@ -522,12 +556,60 @@
 
         // 生成食物
         function generateFood() {
+            foodCount++;
+            
+            // 检查是否应该生成金苹果：分数≥100且每5个食物的第5个
+            if (score >= 100 && foodCount % 5 === 0) {
+                goldenAppleActive = true;
+                console.log('生成金苹果！食物计数：' + foodCount);
+            } else {
+                goldenAppleActive = false;
+            }
+            
             do {
                 food = {
                     x: Math.floor(Math.random() * GRID_SIZE),
                     y: Math.floor(Math.random() * GRID_SIZE)
                 };
-            } while (isSnakePosition(food.x, food.y));
+            } while (isSnakePosition(food.x, food.y) || isObstaclePosition(food.x, food.y));
+        }
+
+        // 生成障碍物
+        function generateObstacles() {
+            obstacles = [];
+            let attempts = 0;
+            const maxAttempts = 1000;
+            
+            while (obstacles.length < 6 && attempts < maxAttempts) {
+                const x = Math.floor(Math.random() * GRID_SIZE);
+                const y = Math.floor(Math.random() * GRID_SIZE);
+                
+                // 检查是否与蛇距离2格以上
+                let minDistance = Infinity;
+                snake.forEach(segment => {
+                    const distance = Math.abs(x - segment.x) + Math.abs(y - segment.y);
+                    minDistance = Math.min(minDistance, distance);
+                });
+                
+                // 检查是否与食物冲突
+                const conflictWithFood = food && x === food.x && y === food.y;
+                
+                // 检查是否与现有障碍物冲突
+                const conflictWithObstacles = obstacles.some(obs => obs.x === x && obs.y === y);
+                
+                if (minDistance >= 2 && !conflictWithFood && !conflictWithObstacles && !isSnakePosition(x, y)) {
+                    obstacles.push({ x, y });
+                }
+                
+                attempts++;
+            }
+            
+            console.log('生成障碍物：', obstacles.length, '个');
+        }
+
+        // 检查是否是障碍物位置
+        function isObstaclePosition(x, y) {
+            return obstacles.some(obstacle => obstacle.x === x && obstacle.y === y);
         }
 
         // 检查是否是蛇身位置
@@ -540,6 +622,9 @@
             // 清空画布
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制障碍物
+            drawObstacles();
             
             // 绘制蛇
             drawSnake();
@@ -569,8 +654,36 @@
         function drawFood() {
             const cellSize = canvas.width / GRID_SIZE;
             
-            ctx.fillStyle = '#FF5252';
-            ctx.fillRect(food.x * cellSize + 2, food.y * cellSize + 2, cellSize - 4, cellSize - 4);
+            if (goldenAppleActive) {
+                // 金苹果 - 黄色
+                ctx.fillStyle = '#FFD700'; // 金黄色
+                ctx.fillRect(food.x * cellSize + 2, food.y * cellSize + 2, cellSize - 4, cellSize - 4);
+                
+                // 添加金色边框效果
+                ctx.strokeStyle = '#FFA500';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(food.x * cellSize + 2, food.y * cellSize + 2, cellSize - 4, cellSize - 4);
+            } else {
+                // 普通食物 - 红色
+                ctx.fillStyle = '#FF5252';
+                ctx.fillRect(food.x * cellSize + 2, food.y * cellSize + 2, cellSize - 4, cellSize - 4);
+            }
+        }
+
+        // 绘制障碍物
+        function drawObstacles() {
+            const cellSize = canvas.width / GRID_SIZE;
+            
+            obstacles.forEach(obstacle => {
+                // 绘制灰色障碍物
+                ctx.fillStyle = '#808080'; // 灰色
+                ctx.fillRect(obstacle.x * cellSize + 2, obstacle.y * cellSize + 2, cellSize - 4, cellSize - 4);
+                
+                // 添加深灰色边框
+                ctx.strokeStyle = '#404040';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(obstacle.x * cellSize + 2, obstacle.y * cellSize + 2, cellSize - 4, cellSize - 4);
+            });
         }
 
         // 更新游戏状态
@@ -619,12 +732,31 @@
                 return;
             }
             
+            // 检查障碍物碰撞
+            if (isObstaclePosition(head.x, head.y)) {
+                gameOver();
+                return;
+            }
+            
             // 添加新头部
             snake.unshift(head);
             
             // 检查是否吃到食物
             if (head.x === food.x && head.y === food.y) {
-                score++;
+                // 金苹果加20分，普通食物加10分
+                if (goldenAppleActive) {
+                    score += 20;
+                    console.log('吃到金苹果！+20分');
+                } else {
+                    score += 10;
+                }
+                
+                // 更新最高分
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('snakeHighScore', highScore);
+                }
+                
                 generateFood();
                 updateSpeed();
                 updateDisplay();
@@ -642,12 +774,18 @@
             gameRunning = false;
             clearInterval(gameLoop);
             clearInterval(aiLoop);
+            clearInterval(obstacleTimer); // 清除障碍物定时器
             
             document.getElementById('gameOver').style.display = 'block';
         }
 
         // 更新速度
         function updateSpeed() {
+            // 天堂制造模式下不自动调整速度，保持20ms
+            if (heavenMode) {
+                return;
+            }
+            
             if (score > 0 && score % 3 === 0) {
                 const newSpeed = Math.max(MIN_SPEED, currentSpeed - SPEED_INCREMENT);
                 
@@ -672,9 +810,11 @@
         function updateDisplay() {
             const elements = getElements();
             elements.scoreElement.textContent = score;
+            elements.highScoreElement.textContent = highScore; // 新增
             elements.speedElement.textContent = currentSpeed;
             elements.boundaryElement.textContent = boundaryEnabled ? '开启' : '关闭';
             elements.aiElement.textContent = aiMode ? '开启' : '关闭';
+            elements.heavenModeElement.textContent = heavenMode ? '开启' : '关闭';
         }
 
         // 开始游戏循环
@@ -687,6 +827,7 @@
             document.getElementById('gameOver').style.display = 'none';
             clearInterval(gameLoop);
             clearInterval(aiLoop);
+            clearInterval(obstacleTimer); // 清除障碍物定时器
             initGame();
         }
 
@@ -743,6 +884,36 @@
             }
         }
 
+        // 切换天堂制造模式
+        function toggleHeavenMode() {
+            heavenMode = !heavenMode;
+            
+            if (heavenMode) {
+                // 开启天堂模式：保存当前速度，设置为20ms
+                previousSpeed = currentSpeed;
+                currentSpeed = 20;
+                console.log('天堂制造模式已开启，速度：20ms');
+            } else {
+                // 关闭天堂模式：恢复之前速度
+                currentSpeed = previousSpeed;
+                console.log('天堂制造模式已关闭，恢复速度：' + currentSpeed + 'ms');
+            }
+            
+            // 更新显示
+            updateDisplay();
+            
+            // 重新启动游戏循环以应用新速度
+            if (gameRunning && !gamePaused) {
+                clearInterval(gameLoop);
+                startGameLoop();
+                
+                // 更新AI速度
+                if (aiMode) {
+                    restartAIControl();
+                }
+            }
+        }
+
         // 启动AI控制
         function startAIControl() {
             if (!aiMode || !gameRunning || gamePaused) return;
@@ -770,6 +941,26 @@
             }
         }
 
+        // AI控制函数
+        function aiControl() {
+            if (!aiMode || !gameRunning || gamePaused) return;
+
+            const bestDirection = findPathToFood();
+
+            if (bestDirection) {
+                nextDirection = bestDirection;
+            } else {
+                // 如果找不到好的路径，尝试随机选择一个安全的方向
+                const head = snake[0];
+                const neighbors = getSafeNeighbors(head, snake);
+
+                if (neighbors.length > 0) {
+                    const randomNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    nextDirection = randomNeighbor.dir;
+                }
+            }
+        }
+
         // 曼哈顿距离计算
         function manhattanDistance(pos1, pos2) {
             return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
@@ -792,7 +983,7 @@
             return !snakeBody.some(segment => segment.x === x && segment.y === y);
         }
 
-        // 获取安全的邻居位置
+        // 获取安全的邻接位置
         function getSafeNeighbors(position, snakeBody) {
             const neighbors = [];
             const directions = [
@@ -801,76 +992,53 @@
                 { x: -1, y: 0, dir: 'left' },
                 { x: 1, y: 0, dir: 'right' }
             ];
-            
+        
             directions.forEach(dir => {
                 let newX = position.x + dir.x;
                 let newY = position.y + dir.y;
-                
-                // 处理边界穿越
+        
+                // 处理边界跨越
                 if (!boundaryEnabled) {
                     if (newX < 0) newX = GRID_SIZE - 1;
                     else if (newX >= GRID_SIZE) newX = 0;
                     if (newY < 0) newY = GRID_SIZE - 1;
                     else if (newY >= GRID_SIZE) newY = 0;
                 }
-                
-                if (isSafePosition(newX, newY, snakeBody)) {
+        
+                // 检查新位置是否安全，排除蛇头位置（避免头部与尾巴重叠时的误判）
+                const snakeBodyWithoutHead = snakeBody.slice(1); // 排除蛇头
+                if (isSafePosition(newX, newY, snakeBodyWithoutHead) && !isObstaclePosition(newX, newY)) {
                     neighbors.push({ x: newX, y: newY, dir: dir.dir });
                 }
             });
-            
+        
             return neighbors;
         }
-
-        // AI控制函数 - 修复版本
-        function aiControl() {
-            if (!aiMode || !gameRunning || gamePaused) return;
+        
+        // 计算尾巴规避权重
+        function calculateTailAvoidanceWeight(position, tail, direction) {
+            if (snake.length < 10) return 0; // 蛇较短时不进行尾巴规避
             
-            console.log('AI控制执行中...');
+            const distance = manhattanDistance(position, tail);
+            const baseWeight = distance - 2; // 基础权重：距离尾巴的距离减2
             
-            // 使用智能寻路算法找到最佳方向
-            const bestDirection = findPathToFood();
-            
-            if (bestDirection) {
-                // 检查是否可以执行这个方向（避免180度转弯）
-                const opposites = {
-                    'up': 'down',
-                    'down': 'up',
-                    'left': 'right',
-                    'right': 'left'
-                };
-                
-                if (direction !== opposites[bestDirection]) {
-                    nextDirection = bestDirection;
-                    console.log('AI选择方向：' + bestDirection);
-                } else {
-                    console.log('AI方向冲突，当前：' + direction + '，建议：' + bestDirection);
-                    // 如果最佳方向是相反方向，选择其他安全方向
-                    const safeDirections = getSafeNeighbors(snake[0], snake);
-                    const availableDirections = safeDirections.filter(neighbor => 
-                        neighbor.dir !== opposites[direction]
-                    );
-                    
-                    if (availableDirections.length > 0) {
-                        nextDirection = availableDirections[0].dir;
-                        console.log('AI选择替代方向：' + nextDirection);
-                    }
-                }
-            } else {
-                console.log('AI未找到合适路径');
-                // 如果没有找到路径，选择随机安全方向
-                const safeDirections = getSafeNeighbors(snake[0], snake);
-                const opposites = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
-                const availableDirections = safeDirections.filter(neighbor => 
-                    neighbor.dir !== opposites[direction]
-                );
-                
-                if (availableDirections.length > 0) {
-                    const randomDirection = availableDirections[Math.floor(Math.random() * availableDirections.length)];
-                    nextDirection = randomDirection.dir;
-                    console.log('AI随机选择方向：' + nextDirection);
-                }
+            // 如果距离小于等于1，给予负权重（惩罚）
+            if (distance <= 1) {
+                return -3;
             }
+            
+            // 如果距离为2，给予轻微负权重
+            if (distance === 2) {
+                return -1;
+            }
+            
+            // 距离大于2时，给予正权重（奖励）
+            return Math.min(baseWeight, 3); // 最大奖励权重为3
+        }
+        
+        // 合并蛇身和障碍物为统一的障碍物数组
+        function getCombinedObstacles(snakeBody) {
+            return [...snakeBody, ...obstacles];
         }
 
         // 智能寻路算法 - 优化反应速度
@@ -922,7 +1090,7 @@
             }
 
             // 1. Try to find a path to food
-            const pathToFood = bfs(head, food, snake.slice(0, -1), direction); // Pass current direction
+            const pathToFood = bfs(head, food, getCombinedObstacles(snake.slice(0, -1)), direction); // Pass current direction
 
             if (pathToFood && pathToFood.length > 0) {
                 // Simulate taking the first step towards food
@@ -935,26 +1103,46 @@
 
                 // Check if after this move, the snake can still reach its tail
                 // The new snake body for this check would be [nextHead, ...snake.slice(0, -1)]
-                const simulatedSnakeBody = [nextHead, ...snake.slice(0, -1)];
-                // When checking path to tail, the current direction is the direction of nextHead
-                const pathFromNextHeadToTail = bfs(nextHead, tail, simulatedSnakeBody.slice(0, -1), firstMoveDir);
+                 // 使用更精确的蛇体数据，排除旧头部位置，避免头部与尾巴重叠时的误判
+                 const simulatedSnakeBody = [nextHead, ...snake.slice(1, -1)]; // 排除旧头部和旧尾巴
+                 const pathFromNextHeadToTail = bfs(nextHead, tail, getCombinedObstacles(simulatedSnakeBody), firstMoveDir);
 
-                if (pathFromNextHeadToTail) {
-                    // If a path to tail exists, it's a safe move towards food
-                    console.log('AI: Found safe path to food via BFS.');
+                // 计算尾巴规避权重，传入建议方向
+                const tailAvoidanceWeight = calculateTailAvoidanceWeight(nextHead, tail, firstMoveDir);
+
+                if (pathFromNextHeadToTail && tailAvoidanceWeight > -2.0) {
+                    // If a path to tail exists and not too close to tail, it's a safe move towards food
+                    console.log('AI: Found safe path to food via BFS. Tail avoidance weight: ' + tailAvoidanceWeight + ' (蛇长度: ' + snake.length + ')');
                     return firstMoveDir;
                 } else {
-                    console.log('AI: Path to food found, but not safe (cannot reach tail).');
+                    console.log('AI: Path to food found, but not safe (cannot reach tail or too close to tail). Tail avoidance active: ' + (snake.length >= 15));
                 }
             } else {
                 console.log('AI: No path to food found via BFS.');
             }
 
             // 2. If no safe path to food, try to find a path to the tail
-            const pathToTail = bfs(head, tail, snake.slice(0, -1), direction); // Pass current direction
+            // 使用更精确的蛇体数据，排除蛇头位置，避免头部与尾巴重叠时的误判
+            const snakeBodyWithoutHead = snake.slice(1); // 排除蛇头
+            const pathToTail = bfs(head, tail, snakeBodyWithoutHead, direction); // Pass current direction
+            
             if (pathToTail && pathToTail.length > 0) {
-                console.log('AI: Found path to tail via BFS.');
-                return pathToTail[0];
+                // 计算第一步的尾巴规避权重
+                const firstMoveDir = pathToTail[0];
+                let nextHead = { x: head.x, y: head.y };
+                if (firstMoveDir === 'up') nextHead.y--;
+                else if (firstMoveDir === 'down') nextHead.y++;
+                else if (firstMoveDir === 'left') nextHead.x--;
+                else if (firstMoveDir === 'right') nextHead.x++;
+                
+                const tailAvoidanceWeight = calculateTailAvoidanceWeight(nextHead, tail, firstMoveDir);
+                
+                if (tailAvoidanceWeight > -2.0) {
+                    console.log('AI: Found path to tail via BFS. Tail avoidance weight: ' + tailAvoidanceWeight);
+                    return pathToTail[0];
+                } else {
+                    console.log('AI: Path to tail found, but too close to tail area.');
+                }
             } else {
                 console.log('AI: No path to tail found via BFS.');
             }
@@ -962,21 +1150,44 @@
             // 3. If no path to food or tail, resort to finding any safe direction
             const safeDirections = getSafeNeighbors(head, snake);
             const opposites = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
-            const availableDirections = safeDirections.filter(neighbor =>
-                neighbor.dir !== opposites[direction]
-            );
+            
+            // 首先过滤掉会直接导致碰撞的方向，然后过滤掉向尾部移动的方向
+            let availableDirections = safeDirections.filter(neighbor => {
+                // 避免180度转弯
+                if (neighbor.dir === opposites[direction]) return false;
+                
+                // 额外检查：避免向尾部直接移动（增强尾部规避）
+                const tailAvoidanceWeight = calculateTailAvoidanceWeight(neighbor, tail, neighbor.dir);
+                return tailAvoidanceWeight > -2.5; // 更严格的阈值，避免直接向尾部移动
+            });
+            
+            // 如果没有可用的安全方向，放宽尾部规避要求
+            if (availableDirections.length === 0) {
+                availableDirections = safeDirections.filter(neighbor => 
+                    neighbor.dir !== opposites[direction]
+                );
+            }
 
             if (availableDirections.length > 0) {
-                console.log('AI: Resorting to available safe directions.');
-                // Prioritize directions that don't immediately lead to fewer safe spots
-                availableDirections.sort((a, b) => {
-                    const testSnakeA = [a, ...snake.slice(0, -1)];
-                    const futureNeighborsA = getSafeNeighbors(a, testSnakeA);
-                    const testSnakeB = [b, ...snake.slice(0, -1)];
-                    const futureNeighborsB = getSafeNeighbors(b, testSnakeB);
-                    return futureNeighborsB.length - futureNeighborsA.length;
-                });
-                return availableDirections[0].dir;
+                console.log('AI: Resorting to available safe directions. Tail avoidance active: ' + (snake.length >= 15));
+            // Prioritize directions that don't immediately lead to fewer safe spots and avoid tail area
+            availableDirections.sort((a, b) => {
+                const testSnakeA = [a, ...snake.slice(0, -1)];
+                const futureNeighborsA = getSafeNeighbors(a, testSnakeA);
+                const testSnakeB = [b, ...snake.slice(0, -1)];
+                const futureNeighborsB = getSafeNeighbors(b, testSnakeB);
+                
+                // 计算尾巴规避权重，传入建议方向
+                const tailAvoidanceWeightA = calculateTailAvoidanceWeight(a, tail, a.dir);
+                const tailAvoidanceWeightB = calculateTailAvoidanceWeight(b, tail, b.dir);
+                
+                // 综合评分：安全邻居数量 + 尾巴规避权重
+                const scoreA = futureNeighborsA.length + tailAvoidanceWeightA;
+                const scoreB = futureNeighborsB.length + tailAvoidanceWeightB;
+                
+                return scoreB - scoreA; // 分数高的优先
+            });
+            return availableDirections[0].dir;
             }
 
             console.log('AI: No safe direction found, game over imminent.');
@@ -997,6 +1208,9 @@
                     return;
                 case 'q':  // 使用Q键代替A键开启AI，避免与左移冲突
                     toggleAIMode();
+                    return;
+                case 'm':  // 天堂制造模式
+                    toggleHeavenMode();
                     return;
             }
             
